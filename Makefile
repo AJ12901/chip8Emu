@@ -15,4 +15,4 @@
 CFLAGS=-std=c17 -Wall -Wextra
 
 all:
-	gcc chip8Emu.c -o chip8Emu $(CFLAGS) `sdl2-config --cflags --libs`
+	gcc chip8Emu.c -o build/chip8Emu $(CFLAGS) `sdl2-config --cflags --libs`
