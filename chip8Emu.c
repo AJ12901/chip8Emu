@@ -63,9 +63,76 @@ bool init_sdl(sdl_params_t* sdl_parameters, user_config_params_t config_paramete
 }
 
 // Initialize an instance of a chip8
-bool init_chip8(chip8_t* c8_instance)
+bool init_chip8(chip8_t* c8_instance, const char rom_name[])
 {
+  // Programs are generally loaded at RAM location 0x200
+  const uint16_t program_entry_point = 0x200;
+  
+  // Each symbol is represented by a list of 5 bytes representing which of the 40 bits are on/off for that symbol
+  // For example, for the letter E, we can see that in binary, the 1's represent an "E" below:
+  // 1111 0000
+  // 1000 0000
+  // 1111 0000
+  // 1000 0000
+  // 1111 0000
+
+  const uint8_t system_font[] = 
+  {
+      0xF0, 0x90, 0x90, 0x90, 0xF0,   // 0
+      0x20, 0x60, 0x20, 0x20, 0x70,   // 1
+      0xF0, 0x10, 0xF0, 0x80, 0xF0,   // 2
+      0xF0, 0x10, 0xF0, 0x10, 0xF0,   // 3
+      0x90, 0x90, 0xF0, 0x10, 0x10,   // 4
+      0xF0, 0x80, 0xF0, 0x10, 0xF0,   // 5
+      0xF0, 0x80, 0xF0, 0x90, 0xF0,   // 6
+      0xF0, 0x10, 0x20, 0x40, 0x40,   // 7
+      0xF0, 0x90, 0xF0, 0x90, 0xF0,   // 8
+      0xF0, 0x90, 0xF0, 0x10, 0xF0,   // 9
+      0xF0, 0x90, 0xF0, 0x90, 0x90,   // A
+      0xF0, 0x90, 0xF0, 0x90, 0xF0,   // B
+      0xF0, 0x80, 0x80, 0x80, 0xF0,   // C
+      0xF0, 0x90, 0x90, 0x90, 0xF0,   // D
+      0xF0, 0x80, 0xF0, 0x80, 0xF0,   // E
+      0xF0, 0x80, 0xF0, 0x80, 0x80    // F
+  };
+
+  // Load font set (digits 0-9 and letters A-F)
+  memcpy(&c8_instance->emu_ram[0], &system_font, sizeof(system_font));
+
+  // Read ROM Data
+  FILE* rom_data = fopen(rom_name, "rb");
+  if (!rom_data)
+  {
+    SDL_Log("chip8 ROM file %s cannot be read", rom_name);
+    return false;
+  }
+
+  // Get ROM size
+  fseek(rom_data, 0, SEEK_END);             // Move filePtr to end of file
+  const size_t rom_size = ftell(rom_data);  // Get current filePtr
+  const size_t max_rom_size = sizeof(c8_instance->emu_ram) - program_entry_point;
+  rewind(rom_data);
+
+  if (rom_size > max_rom_size)
+  {
+    SDL_Log("ROM file size %u ... max allowed size %u.", (unsigned int)rom_size, (unsigned int)max_rom_size);
+    return false;
+  }
+
+  // Load ROM data
+  if (fread(&c8_instance->emu_ram[program_entry_point], rom_size, 1, rom_data) != 1)
+  {
+    SDL_Log("Error when reading ROM file into chip8 RAM");
+    return false;
+  }
+
+  fclose(rom_data);
+
+  // Set C8 defaults
   c8_instance->emu_state = RUNNING;
+  c8_instance->emu_pc = program_entry_point;
+  c8_instance->emu_romName = rom_name;
+
   return true;
 }
 
@@ -151,6 +218,9 @@ void handle_user_input(chip8_t* c8_instance)
 
 int main (int argc, char** argv)
 {
+  const char* rom_name = argv[1];
+
+  // Exit if user configuration parameters not initialized
   user_config_params_t config_parameters = {0};
   if (!init_user_configuration(&config_parameters, argc, argv))
     exit(EXIT_FAILURE);
@@ -162,7 +232,7 @@ int main (int argc, char** argv)
 
   // Exit if Chip8 not initialized
   chip8_t chip8_instnace = {0};
-  if (!init_chip8(&chip8_instnace))
+  if (!init_chip8(&chip8_instnace, rom_name))
     exit(EXIT_FAILURE);
 
   clear_window(&sdl_parameters, &config_parameters);
@@ -179,7 +249,8 @@ int main (int argc, char** argv)
   }
 
   if (chip8_instnace.emu_state == QUIT)
-    printf("\nchip8Emu quiting ... bye :((\n");
+    SDL_Log("\nchip8Emu quiting ... bye :((\n");
+
 
   cleanup_sdl(&sdl_parameters);
   return 0; 
