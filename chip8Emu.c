@@ -3,25 +3,33 @@
 #include <stdbool.h>
 #include <SDL2/SDL.h>
 
-// Main SDL Parameters used in a lot of functions
-typedef struct
+#include "chip8Emu.h"
+
+/*
+ *
+ *
+ *    INITIALIZATION AND SETUP FUNCTIONS
+ *
+ * 
+ */
+
+// Initialize user configuration settings received from the CLI
+bool init_user_configuration(user_config_params_t* cfg_params, int num_args, char** args_array)
 {
-  SDL_Window* main_window;
-  SDL_Renderer* main_renderer;
-} sdl_params_t;
+  // Setup Default User Parameters
+  cfg_params->window_height = 32 * 10;
+  cfg_params->window_width = 64 * 10;
+  cfg_params->fg_color = 0x00000000;
+  cfg_params->bg_color = 0xFFFF00FF;
 
-// User may want to pass these in as customisable parameters
-typedef struct
-{
-  uint32_t window_width;
-  uint32_t window_height;
-  uint32_t fg_color;
-  uint32_t bg_color;
+  // If arguments are passed, override defaults
+  for (int i=0; i<num_args; i++)
+  {
+    printf("Argument %d: %s\n", i, args_array[i]);
+  }
 
-} user_config_params_t;
-
-
-
+  return true;
+}
 
 // Run once to initialize the SDL parameters (return true if initialized)
 bool init_sdl(sdl_params_t* sdl_parameters, user_config_params_t config_parameters)
@@ -54,6 +62,22 @@ bool init_sdl(sdl_params_t* sdl_parameters, user_config_params_t config_paramete
   return true;
 }
 
+// Initialize an instance of a chip8
+bool init_chip8(chip8_t* c8_instance)
+{
+  c8_instance->emu_state = RUNNING;
+  return true;
+}
+
+
+/*
+ *
+ *
+ *    CLEANUP FUNCTIONS
+ *
+ * 
+ */
+
 // Clean up SDL Windows, Renderers, etc when SDL is about to quit
 void cleanup_sdl(sdl_params_t* sdl_parameters)
 {
@@ -61,6 +85,8 @@ void cleanup_sdl(sdl_params_t* sdl_parameters)
   SDL_DestroyWindow(sdl_parameters->main_window);
   SDL_Quit();
 }
+
+
 
 // Clear window to the background color
 void clear_window(sdl_params_t* sdl_parameters, user_config_params_t* cfg_params)
@@ -74,64 +100,87 @@ void clear_window(sdl_params_t* sdl_parameters, user_config_params_t* cfg_params
   SDL_RenderClear(sdl_parameters->main_renderer);
 }
 
+
+
 // Update the window in the main loop
-void update_window(sdl_params_t* sdl_params, user_config_params_t* cfg_params)
+void update_window(sdl_params_t* sdl_params)
 {
   SDL_RenderPresent(sdl_params->main_renderer);
 }
 
-int main (int argc, char **argv)
+
+
+// Get User Input
+void handle_user_input(chip8_t* c8_instance)
 {
-  (void) argc;
-  (void) argv;
+  SDL_Event main_events;
 
-  sdl_params_t sdl_parameters = {0};
+  while (SDL_PollEvent(&main_events))
+  {
+    switch (main_events.type)
+    {
+      case SDL_QUIT:
+        c8_instance->emu_state = QUIT;
+        return;
+      
+      case SDL_KEYDOWN:
+        switch (main_events.key.keysym.sym)
+        {
+          case SDLK_ESCAPE:
+            c8_instance->emu_state = QUIT;
+            return;
+
+          default:
+            break;
+        }
+        break;
+
+      case SDL_KEYUP:
+        break;
+      
+      default:
+        break;
+    }
+  }
+
+}
+
+
+
+
+
+int main (int argc, char** argv)
+{
   user_config_params_t config_parameters = {0};
+  if (!init_user_configuration(&config_parameters, argc, argv))
+    exit(EXIT_FAILURE);
 
-  // Setup User Parameters
-  config_parameters.window_height = 32 * 10;
-  config_parameters.window_width = 64 * 10;
-  config_parameters.fg_color = 0x00000000;
-  config_parameters.bg_color = 0xFFFF00FF;
-
-  // Exit if not initialized
+  // Exit if SDL not initialized
+  sdl_params_t sdl_parameters = {0};
   if (!init_sdl(&sdl_parameters, config_parameters))
-    return 1;
+    exit(EXIT_FAILURE);
+
+  // Exit if Chip8 not initialized
+  chip8_t chip8_instnace = {0};
+  if (!init_chip8(&chip8_instnace))
+    exit(EXIT_FAILURE);
 
   clear_window(&sdl_parameters, &config_parameters);
 
-  while (true)
+  while (chip8_instnace.emu_state != QUIT)
   {
+    // Handles all user input until nothing remains in the input queue
+    handle_user_input(&chip8_instnace);
+
     // Delay by ((1/60) * 1000) to get delay in ms for 60HZ 
     SDL_Delay(16.66);
 
-    update_window(&sdl_parameters, &config_parameters);
+    update_window(&sdl_parameters);
   }
+
+  if (chip8_instnace.emu_state == QUIT)
+    printf("\nchip8Emu quiting ... bye :((\n");
 
   cleanup_sdl(&sdl_parameters);
   return 0; 
 }
-
-
-
-
-
-/*
-// MAC requires SDL_EVENT in order to show a window:
-bool quit = false;
-SDL_Event sdl_event;
-
-// While application is running
-while( !quit )
-{
-// Handle events on queue
-  while( SDL_PollEvent(&sdl_event) != 0) // poll for event
-  {
-      // User requests quit
-      if( sdl_event.type == SDL_QUIT ) // unless player manually quits
-      quit = true;
-  }
-
-update_window(&sdl_parameters, &config_parameters); 
-}
-*/
