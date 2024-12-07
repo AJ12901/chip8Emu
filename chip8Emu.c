@@ -19,8 +19,8 @@ bool init_user_configuration(user_config_params_t* cfg_params, int num_args, cha
   // Setup Default User Parameters
   cfg_params->window_height = 32 * 10;
   cfg_params->window_width = 64 * 10;
-  cfg_params->fg_color = 0x00000000;
-  cfg_params->bg_color = 0xFFFF00FF;
+  cfg_params->fg_color = 0xFFFFFFFF;
+  cfg_params->bg_color = 0x00000000;
 
   // If arguments are passed, override defaults
   for (int i=0; i<num_args; i++)
@@ -63,7 +63,7 @@ bool init_sdl(sdl_params_t* sdl_parameters, user_config_params_t config_paramete
 }
 
 // Initialize an instance of a chip8
-bool init_chip8(chip8_t* c8_instance, const char rom_name[])
+bool init_chip8(chip8_t* c8, const char rom_name[])
 {
   // Programs are generally loaded at RAM location 0x200
   const uint16_t program_entry_point = 0x200;
@@ -97,7 +97,7 @@ bool init_chip8(chip8_t* c8_instance, const char rom_name[])
   };
 
   // Load font set (digits 0-9 and letters A-F)
-  memcpy(&c8_instance->emu_ram[0], &system_font, sizeof(system_font));
+  memcpy(&c8->emu_ram[0], &system_font, sizeof(system_font));
 
   // Read ROM Data
   FILE* rom_data = fopen(rom_name, "rb");
@@ -110,7 +110,7 @@ bool init_chip8(chip8_t* c8_instance, const char rom_name[])
   // Get ROM size
   fseek(rom_data, 0, SEEK_END);             // Move filePtr to end of file
   const size_t rom_size = ftell(rom_data);  // Get current filePtr
-  const size_t max_rom_size = sizeof(c8_instance->emu_ram) - program_entry_point;
+  const size_t max_rom_size = sizeof(c8->emu_ram) - program_entry_point;
   rewind(rom_data);
 
   if (rom_size > max_rom_size)
@@ -120,7 +120,7 @@ bool init_chip8(chip8_t* c8_instance, const char rom_name[])
   }
 
   // Load ROM data
-  if (fread(&c8_instance->emu_ram[program_entry_point], rom_size, 1, rom_data) != 1)
+  if (fread(&c8->emu_ram[program_entry_point], rom_size, 1, rom_data) != 1)
   {
     SDL_Log("Error when reading ROM file into chip8 RAM");
     return false;
@@ -129,11 +129,24 @@ bool init_chip8(chip8_t* c8_instance, const char rom_name[])
   fclose(rom_data);
 
   // Set C8 defaults
-  c8_instance->emu_state = RUNNING;
-  c8_instance->emu_pc = program_entry_point;
-  c8_instance->emu_romName = rom_name;
+  c8->emu_state = RUNNING;
+  c8->emu_pc = program_entry_point;
+  c8->emu_romName = rom_name;
+  c8->emu_subrStack_ptr = &c8->emu_subrStack[0];
 
   return true;
+}
+
+// Clear window to the background color
+void clear_window(sdl_params_t* sdl_parameters, user_config_params_t* cfg_params)
+{
+  uint8_t r = (cfg_params->bg_color >> (32- 8)) & 0xFF;
+  uint8_t g = (cfg_params->bg_color >> (32-16)) & 0xFF;
+  uint8_t b = (cfg_params->bg_color >> (32-24)) & 0xFF;
+  uint8_t a = (cfg_params->bg_color >> (32-32)) & 0xFF;
+
+  SDL_SetRenderDrawColor(sdl_parameters->main_renderer, r, g, b, a);
+  SDL_RenderClear(sdl_parameters->main_renderer);
 }
 
 
@@ -154,31 +167,16 @@ void cleanup_sdl(sdl_params_t* sdl_parameters)
 }
 
 
-
-// Clear window to the background color
-void clear_window(sdl_params_t* sdl_parameters, user_config_params_t* cfg_params)
-{
-  uint8_t r = (cfg_params->bg_color >> (32- 8)) & 0xFF;
-  uint8_t g = (cfg_params->bg_color >> (32-16)) & 0xFF;
-  uint8_t b = (cfg_params->bg_color >> (32-24)) & 0xFF;
-  uint8_t a = (cfg_params->bg_color >> (32-32)) & 0xFF;
-
-  SDL_SetRenderDrawColor(sdl_parameters->main_renderer, r, g, b, a);
-  SDL_RenderClear(sdl_parameters->main_renderer);
-}
-
-
-
-// Update the window in the main loop
-void update_window(sdl_params_t* sdl_params)
-{
-  SDL_RenderPresent(sdl_params->main_renderer);
-}
-
-
+/*
+ *
+ *
+ *    MAIN LOOP FUNCTIONS
+ *
+ * 
+ */
 
 // Get User Input
-void handle_user_input(chip8_t* c8_instance)
+void handle_user_input(chip8_t* c8)
 {
   SDL_Event main_events;
 
@@ -187,14 +185,27 @@ void handle_user_input(chip8_t* c8_instance)
     switch (main_events.type)
     {
       case SDL_QUIT:
-        c8_instance->emu_state = QUIT;
+        c8->emu_state = QUIT;
         return;
       
       case SDL_KEYDOWN:
         switch (main_events.key.keysym.sym)
         {
           case SDLK_ESCAPE:
-            c8_instance->emu_state = QUIT;
+            c8->emu_state = QUIT;
+            return;
+
+          case SDLK_SPACE:
+            if (c8->emu_state == RUNNING)
+            {
+              puts("STATE PAUSED");
+              c8->emu_state = PAUSE;
+            }
+            else
+            {
+              puts("STATE RESUMED");
+              c8->emu_state = RUNNING;
+            }
             return;
 
           default:
@@ -209,7 +220,144 @@ void handle_user_input(chip8_t* c8_instance)
         break;
     }
   }
+}
 
+void print_debug(chip8_t* c8)
+{
+  printf("Address: 0x%04X, Opcode: 0x%04X, Desc: ", c8->emu_pc-2, c8->instr.inst_opcode);
+
+  switch (c8->instr.inst_op)
+  {
+    case 0x00:
+    {
+      if (c8->instr.inst_nn == 0xE0)  // 00E0: Clear Screen
+      {
+        printf("Clear Screen\r\n");
+      }
+      else if (c8->instr.inst_nn == 0xEE) // 00EE: Return from subroutine
+      {
+        printf("Subroutine Return to addr 0x%04X\r\n", *(c8->emu_subrStack_ptr - 1));
+      }
+      else
+      {
+        printf("Unimplemented Opcode 0 \r\n");
+      }
+      break;
+    }
+
+    case 0x02:        // 2NNN: Call Subroutine at MemoryAddr NNN
+    {
+      printf("Call Subroutine \r\n");
+      break;
+    }
+
+    case 0x06:      // 6XNN: Set Data Register VX to NN
+    {
+      printf("Set Reg V%X to NN 0x%02X \r\n", c8->instr.inst_x, c8->instr.inst_nn);
+      break;
+    }
+
+    case 0x0A:       // ANNN: Set Memory Index Register I to NNN
+    {
+      printf("Set Reg I to NNN 0x%04X \r\n", c8->instr.inst_nnn);
+      break;
+    }
+
+    case 0x0D:
+    {
+      // Leave at 1:08:00
+
+    }
+
+    
+    default:
+      printf("Unimplemented Opcodes \r\n");
+      break;
+  }
+
+}
+
+
+// Emulate Chip8 Instructions
+void emulate_instructions(chip8_t* c8)
+{
+  // Get Current Instruction OPCODE using PC and RAM (Shift it since C8 is BigEndian and we are LittleEndian)
+  // Increase PC for next instruction
+  c8->instr.inst_opcode = (c8->emu_ram[c8->emu_pc] << 8) | (c8->emu_ram[c8->emu_pc+1]);
+  c8->emu_pc += 2;
+
+  // Fill instruction in the struct
+  c8->instr.inst_nnn = c8->instr.inst_opcode & 0x0FFF;
+  c8->instr.inst_nn  = c8->instr.inst_opcode & 0x00FF;
+  c8->instr.inst_n   = c8->instr.inst_opcode & 0x000F;
+  c8->instr.inst_x   = (c8->instr.inst_opcode & 0x0F00) >> 8;
+  c8->instr.inst_y   = (c8->instr.inst_opcode & 0x00F0) >> 4;
+  c8->instr.inst_op  = (c8->instr.inst_opcode & 0xF000) >> 12;
+
+  print_debug(c8);
+
+  switch (c8->instr.inst_op)
+  {
+    case 0x00:
+    {
+      if (c8->instr.inst_nn == 0xE0)  // 00E0: Clear Screen
+      { 
+        memset(&(c8->emu_display[0]), false, sizeof(c8->emu_display));   // Clear Screen 
+
+      }
+      else if (c8->instr.inst_nn == 0xEE) // 00EE: Return from subroutine
+      {
+        // Set PC to the PC from the subroutine stack
+        // Decrement first since it is currently pointing to the "next" stack location where a PC will be stored
+        c8->emu_subrStack_ptr--;
+        c8->emu_pc = *(c8->emu_subrStack_ptr);
+
+
+
+      }
+      break;
+    }
+
+    case 0x02:        // 2NNN: Call Subroutine at MemoryAddr NNN
+    {
+      // Derefernce the stack pointer for the subroutine stack and point it to the incremented PC
+      // So, after returning from the SubR, it executes the next instruction (kind of like saving state)
+      // Then set, PC to NNN to jump to executing that instruction
+      // Increment StackPtr to point to next stack location   (in case two subroutines are stacked)
+      *(c8->emu_subrStack_ptr) = c8->emu_pc;
+      c8->emu_pc = c8->instr.inst_nnn;
+      c8->emu_subrStack_ptr++;
+      break;
+    }
+
+    case 0x06:      // 6XNN: Set Data Register VX to NN
+    {
+      c8->emu_V[c8->instr.inst_x] = c8->instr.inst_nn;
+      break;
+    }
+
+    case 0x0A:       // ANNN: Set Memory Index Register I to NNN
+    {
+      c8->emu_I = c8->instr.inst_nnn;
+      break;
+    }
+
+
+    
+    default:
+      break;
+  }
+
+
+
+
+
+}
+
+// Update the window in the main loop
+void update_window(sdl_params_t* sdl_params)
+{
+  SDL_RenderPresent(sdl_params->main_renderer);
 }
 
 
@@ -219,6 +367,12 @@ void handle_user_input(chip8_t* c8_instance)
 int main (int argc, char** argv)
 {
   const char* rom_name = argv[1];
+
+  if (argc < 2)
+  {
+    fprintf(stderr, "Usage: %s <rom_name>\n", argv[0]);
+    exit(EXIT_FAILURE);
+  }
 
   // Exit if user configuration parameters not initialized
   user_config_params_t config_parameters = {0};
@@ -241,6 +395,10 @@ int main (int argc, char** argv)
   {
     // Handles all user input until nothing remains in the input queue
     handle_user_input(&chip8_instnace);
+
+    if (chip8_instnace.emu_state == PAUSE) {continue;}
+
+    emulate_instructions(&chip8_instnace);
 
     // Delay by ((1/60) * 1000) to get delay in ms for 60HZ 
     SDL_Delay(16.66);

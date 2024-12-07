@@ -33,14 +33,29 @@ typedef enum
   PAUSE = 2
 } current_state_t;
 
+typedef struct
+{
+  uint16_t inst_opcode;   // Entire Main Instruction
+  
+  uint16_t inst_nnn;  // 12 Bit Address
+  uint8_t inst_nn;    // 8 Bit constant
+  uint8_t inst_n;     // 4 Bit constant
+  uint8_t inst_x;     // 4 Bit register identifier
+  uint8_t inst_y;     // 4 Bit register identifier
+  uint8_t inst_op;    // Identify type/category of instruction
+
+} instruction_t;
+
 
 // Could have multiple chip8_t instances for multiple windows simulatanoeusly 
 typedef struct
 {
   // Current state of the emulator
   // Name of the currently running rom
+  // Currently executing instruction 
   current_state_t emu_state;
   const char* emu_romName;
+  instruction_t instr;
 
   // Main System RAM
   uint8_t emu_ram[4096];
@@ -51,6 +66,7 @@ typedef struct
 
   // Subroutine stack for 12 levels of subroutines (look into this more)
   uint16_t emu_subrStack[12];
+  uint16_t* emu_subrStack_ptr;
 
   // V is 16 Data registers from V0 to VF
   // I is a 12 bit memory index/address register
