@@ -17,8 +17,11 @@
 bool init_user_configuration(user_config_params_t* cfg_params, int num_args, char** args_array)
 {
   // Setup Default User Parameters
-  cfg_params->window_height = 32 * 10;
-  cfg_params->window_width = 64 * 10;
+  cfg_params->scale_factor = 15;
+  cfg_params->window_height = 32;
+  cfg_params->window_width = 64;
+  cfg_params->pixel_outlines = true;
+
   cfg_params->fg_color = 0xFFFFFFFF;
   cfg_params->bg_color = 0x00000000;
 
@@ -41,7 +44,7 @@ bool init_sdl(sdl_params_t* sdl_parameters, user_config_params_t config_paramete
     return false;
   }
 
-  sdl_parameters->main_window = SDL_CreateWindow("Chip8Emu", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, config_parameters.window_width, config_parameters.window_height, 0);
+  sdl_parameters->main_window = SDL_CreateWindow("Chip8Emu", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (config_parameters.window_width * config_parameters.scale_factor), (config_parameters.window_height * config_parameters.scale_factor), 0);
 
   // Try to create SDL Window
   if (sdl_parameters->main_window == NULL)
@@ -245,6 +248,12 @@ void print_debug(chip8_t* c8)
       break;
     }
 
+    case 0x01:        // 1NNN: Jump to Address NNN
+    {
+      printf("Jump to Address NNN (0x%04X) \r\n", c8->instr.inst_nnn);
+      break;
+    }
+
     case 0x02:        // 2NNN: Call Subroutine at MemoryAddr NNN
     {
       printf("Call Subroutine \r\n");
@@ -253,7 +262,13 @@ void print_debug(chip8_t* c8)
 
     case 0x06:      // 6XNN: Set Data Register VX to NN
     {
-      printf("Set Reg V%X to NN 0x%02X \r\n", c8->instr.inst_x, c8->instr.inst_nn);
+      printf("Set Reg V%X = NN 0x%02X \r\n", c8->instr.inst_x, c8->instr.inst_nn);
+      break;
+    }
+
+    case 0x07:      // 7XNN: Add NN to VX (carry flag not changed)
+    {
+      printf("Set Reg V%X (0x%02X) += NN 0x%02X. Result 0x%02X\r\n", c8->instr.inst_x, c8->emu_V[c8->instr.inst_x], c8->instr.inst_nn, c8->emu_V[c8->instr.inst_x] + c8->instr.inst_nn);
       break;
     }
 
@@ -264,7 +279,9 @@ void print_debug(chip8_t* c8)
     }
 
     case 0x0D:
-    {
+    { 
+      printf("Draw N (%u) height sprite at coords V%X (0x%02X), V%X, (0x%02X) from memory location I (0x%04X)\r\n", c8->instr.inst_n, c8->instr.inst_x, c8->emu_V[c8->instr.inst_x], c8->instr.inst_y, c8->emu_V[c8->instr.inst_y], c8->emu_I);
+      break;
       // Leave at 1:08:00
 
     }
@@ -279,7 +296,7 @@ void print_debug(chip8_t* c8)
 
 
 // Emulate Chip8 Instructions
-void emulate_instructions(chip8_t* c8)
+void emulate_instructions(chip8_t* c8, user_config_params_t* cfg)
 {
   // Get Current Instruction OPCODE using PC and RAM (Shift it since C8 is BigEndian and we are LittleEndian)
   // Increase PC for next instruction
@@ -318,6 +335,12 @@ void emulate_instructions(chip8_t* c8)
       break;
     }
 
+    case 0x01:        // 1NNN: Jump to Address NNN
+    {
+      c8->emu_pc = c8->instr.inst_nnn;
+      break;
+    }
+
     case 0x02:        // 2NNN: Call Subroutine at MemoryAddr NNN
     {
       // Derefernce the stack pointer for the subroutine stack and point it to the incremented PC
@@ -336,9 +359,55 @@ void emulate_instructions(chip8_t* c8)
       break;
     }
 
+    case 0x07:      // 7XNN: Add NN to VX (carry flag not changed)
+    {
+      c8->emu_V[c8->instr.inst_x] += c8->instr.inst_nn;
+      break;
+    }
+
     case 0x0A:       // ANNN: Set Memory Index Register I to NNN
     {
       c8->emu_I = c8->instr.inst_nnn;
+      break;
+    }
+
+    case 0x0D:      // DXYN: Draw N height Sprite at Coordinate XY
+    {
+      // Read from mem location I
+      // Screen pixels are XOR-ed with sprite bits
+      // VF (carry flag) is set if any scren pixels are set off (useful for collision detection)
+
+      // Get Coordinates
+      uint8_t x_cor = c8->emu_V[c8->instr.inst_x] % cfg->window_width;
+      uint8_t y_cor = c8->emu_V[c8->instr.inst_y] % cfg->window_height;
+      const uint8_t x_cor_original = x_cor;
+
+      // Set carry flag to 0  
+      c8->emu_V[0x0F] = 0;
+
+      // Loop over all N rows of the sprite
+      for (uint8_t i=0; i<c8->instr.inst_n; i++)
+      {
+        // First, get the next byte/row of the sprite data and reset x for the next row
+        const uint8_t sprite_data = c8->emu_ram[c8->emu_I + i];
+        x_cor = x_cor_original;
+
+        for (int8_t j=7; j>=0; j--)
+        {
+          bool *pixel = &(c8->emu_display[y_cor * cfg->window_width + x_cor]);
+          bool sprite_bit = (sprite_data & (1 << j));
+
+          if (sprite_bit && *pixel) {c8->emu_V[0x0F] = 1;}
+          *pixel ^= sprite_bit;
+
+          x_cor++;
+          if (x_cor >= cfg->window_width) {break;}
+        }
+
+        y_cor++;
+        if (y_cor >= cfg->window_height) {break;}
+      }
+
       break;
     }
 
@@ -355,8 +424,51 @@ void emulate_instructions(chip8_t* c8)
 }
 
 // Update the window in the main loop
-void update_window(sdl_params_t* sdl_params)
+void update_window(sdl_params_t* sdl_params, user_config_params_t* cfg, chip8_t* c8)
 {
+  // Rectangle object representing each pixel
+  SDL_Rect sdl_rectangle = {.x=0, .y=0, .w=cfg->scale_factor, .h=cfg->scale_factor};
+
+  // Get foreground and background colors
+  uint8_t fg_r = (cfg->fg_color >> (32- 8)) & 0xFF;
+  uint8_t fg_g = (cfg->fg_color >> (32-16)) & 0xFF;
+  uint8_t fg_b = (cfg->fg_color >> (32-24)) & 0xFF;
+  uint8_t fg_a = (cfg->fg_color >> (32-32)) & 0xFF;
+
+  uint8_t bg_r = (cfg->bg_color >> (32- 8)) & 0xFF;
+  uint8_t bg_g = (cfg->bg_color >> (32-16)) & 0xFF;
+  uint8_t bg_b = (cfg->bg_color >> (32-24)) & 0xFF;
+  uint8_t bg_a = (cfg->bg_color >> (32-32)) & 0xFF;
+
+  for (long unsigned i=0; i<(sizeof(c8->emu_display)); i++)
+  {
+    // Emu display is a 1D array representing a 2D screen. Get X and Y coordingates
+    sdl_rectangle.x = (i % cfg->window_width) * cfg->scale_factor;
+    sdl_rectangle.y = (i / cfg->window_width) * cfg->scale_factor;
+
+    // If Pixel is on, draw foreground color
+    if (c8->emu_display[i])
+    {
+      SDL_SetRenderDrawColor(sdl_params->main_renderer, fg_r, fg_g, fg_b, fg_a);
+      SDL_RenderFillRect(sdl_params->main_renderer, &sdl_rectangle);
+    }
+
+    // Pixel Outline Config (optional)
+    if (cfg->pixel_outlines)
+    {
+      SDL_SetRenderDrawColor(sdl_params->main_renderer, bg_r, bg_g, bg_b, bg_a);
+      SDL_RenderDrawRect(sdl_params->main_renderer, &sdl_rectangle);
+    }
+
+    // If Pixel is on, draw background color
+    else
+    {
+      SDL_SetRenderDrawColor(sdl_params->main_renderer, bg_r, bg_g, bg_b, bg_a);
+      SDL_RenderFillRect(sdl_params->main_renderer, &sdl_rectangle);
+    }
+  }
+
+
   SDL_RenderPresent(sdl_params->main_renderer);
 }
 
@@ -398,12 +510,12 @@ int main (int argc, char** argv)
 
     if (chip8_instnace.emu_state == PAUSE) {continue;}
 
-    emulate_instructions(&chip8_instnace);
+    emulate_instructions(&chip8_instnace, &config_parameters);
 
     // Delay by ((1/60) * 1000) to get delay in ms for 60HZ 
     SDL_Delay(16.66);
 
-    update_window(&sdl_parameters);
+    update_window(&sdl_parameters, &config_parameters, &chip8_instnace);
   }
 
   if (chip8_instnace.emu_state == QUIT)

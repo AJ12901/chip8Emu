@@ -19,8 +19,10 @@ typedef struct
 {
   uint32_t window_width;
   uint32_t window_height;
+  uint32_t scale_factor;
   uint32_t fg_color;
   uint32_t bg_color;
+  bool pixel_outlines;
 
 } user_config_params_t;
 
