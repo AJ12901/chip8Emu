@@ -260,6 +260,25 @@ void print_debug(chip8_t* c8)
       break;
     }
 
+    case 0x03:      // 0x3NN: If V[X] == NN, skip next instruction
+    {
+      printf("Check if V%X (0x%02X) == NN (0x%02X) and skip next inst if true \r\n",c8->instr.inst_x, c8->emu_V[c8->instr.inst_x], c8->instr.inst_nn);
+      break;
+    }
+
+    case 0x04:      // 0x4XNN: If V[X] != NN, skip next instruction
+    {
+      printf("Check if V%X (0x%02X) != NN (0x%02X) and skip next inst if true \r\n",c8->instr.inst_x, c8->emu_V[c8->instr.inst_x], c8->instr.inst_nn);
+      break;
+    }
+
+    case 0x05:      // 0x4XNN: If V[X] == V[Y], skip next instruction
+    {
+      printf("Check if V%X (0x%02X) == V%X (0x%02X) and skip next inst if true \r\n",c8->instr.inst_x, c8->emu_V[c8->instr.inst_x], c8->instr.inst_y, c8->emu_V[c8->instr.inst_y]);
+      break;
+    }
+
+
     case 0x06:      // 6XNN: Set Data Register VX to NN
     {
       printf("Set Reg V%X = NN 0x%02X \r\n", c8->instr.inst_x, c8->instr.inst_nn);
@@ -272,9 +291,95 @@ void print_debug(chip8_t* c8)
       break;
     }
 
+    case 0x08:
+    {
+      if (c8->instr.inst_n == 0x00)
+        printf("Register V%X = V%X (0x%02X) \r\n", c8->instr.inst_x, c8->instr.inst_y, c8->emu_V[c8->instr.inst_y]);
+
+      else if (c8->instr.inst_n == 0x01)
+        printf("Register V%X (0x%02X) |= V%X (0x%02X)  Result: 0x%02X\r\n", 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x],
+          c8->instr.inst_y, c8->emu_V[c8->instr.inst_y], 
+          c8->emu_V[c8->instr.inst_x] | c8->emu_V[c8->instr.inst_y]);
+
+      else if (c8->instr.inst_n == 0x02)
+        printf("Register V%X (0x%02X) &= V%X (0x%02X)  Result: 0x%02X\r\n", 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x],
+          c8->instr.inst_y, c8->emu_V[c8->instr.inst_y], 
+          c8->emu_V[c8->instr.inst_x] & c8->emu_V[c8->instr.inst_y]);
+
+      else if (c8->instr.inst_n == 0x03)
+        printf("Register V%X (0x%02X) ^= V%X (0x%02X)  Result: 0x%02X\r\n", 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x],
+          c8->instr.inst_y, c8->emu_V[c8->instr.inst_y], 
+          c8->emu_V[c8->instr.inst_x] ^ c8->emu_V[c8->instr.inst_y]);
+
+      else if (c8->instr.inst_n == 0x04)                                 // 0x8XY4: Set VX += VY and set VF to 1 if carry
+      {
+        printf("Register V%X (0x%02X) += V%X (0x%02X)  Result: 0x%02X and VF = %02X\r\n", 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x],
+          c8->instr.inst_y, c8->emu_V[c8->instr.inst_y], 
+          c8->emu_V[c8->instr.inst_x] + c8->emu_V[c8->instr.inst_y],
+          ((uint16_t)(c8->emu_V[c8->instr.inst_x] +  c8->emu_V[c8->instr.inst_y])) > 255);
+      }
+
+      else if (c8->instr.inst_n == 0x05)                                 // 0x8XY5: Set VX -= VY and set VF to 1 if no borrow
+      {
+        printf("Register V%X (0x%02X) -= V%X (0x%02X)  Result: 0x%02X and VF = %02X\r\n", 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x],
+          c8->instr.inst_y, c8->emu_V[c8->instr.inst_y], 
+          c8->emu_V[c8->instr.inst_x] - c8->emu_V[c8->instr.inst_y],
+          (uint16_t)(c8->emu_V[c8->instr.inst_x] >=  c8->emu_V[c8->instr.inst_y]));
+      }
+
+      else if (c8->instr.inst_n == 0x06)                                 // 0x8XY6: Store LSb of VX in VF amd shift VX right by 1
+      {
+        printf("Register V%X (0x%02X) >>= 1 and VF Bit = %X Result: 0x%02X\r\n", 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x],
+          c8->emu_V[c8->instr.inst_x] & 1,
+          c8->emu_V[c8->instr.inst_x] >> 1);
+      }
+
+      else if (c8->instr.inst_n == 0x07)                                 // 0x8XY7: Set VX = VY - vX and set VF to 1 if no borrow
+      {
+        printf("Register V%X = V%X (0x%02X) - V%X (0x%02X)  Result: 0x%02X and VF = %02X\r\n", 
+          c8->instr.inst_x, c8->instr.inst_y, c8->emu_V[c8->instr.inst_y], 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x], 
+          c8->emu_V[c8->instr.inst_y] - c8->emu_V[c8->instr.inst_x],
+          (uint16_t)(c8->emu_V[c8->instr.inst_y] >=  c8->emu_V[c8->instr.inst_x]));
+      }
+
+      else if (c8->instr.inst_n == 0x0E)                                 // 0x8XYE: Store MSb of VX in VF amd shift VX left by 1
+      {
+        printf("Register V%X (0x%02X) <<= 1 and VF Bit = %X Result: 0x%02X\r\n", 
+          c8->instr.inst_x, c8->emu_V[c8->instr.inst_x],
+          (c8->emu_V[c8->instr.inst_x] & 0x80) >> 7,
+          c8->emu_V[c8->instr.inst_x] << 1);
+      }
+
+      else
+      {
+        // Wrong OPCODE
+      }
+
+      break;
+    }
+
+    case 0x09:      // Skip next instruction if VX != VY
+    {
+      printf("Check if V%X (0x%02X) != V%X (0x%02X) and skip next inst if true \r\n",c8->instr.inst_x, c8->emu_V[c8->instr.inst_x], c8->instr.inst_y, c8->emu_V[c8->instr.inst_y]);
+      break;
+    }
+
     case 0x0A:       // ANNN: Set Memory Index Register I to NNN
     {
       printf("Set Reg I to NNN 0x%04X \r\n", c8->instr.inst_nnn);
+      break;
+    }
+
+    case 0x0B:       // BNNN: Jump to V0 + NNN
+    {
+      printf("Set V to V0 (%02X) + NNN (%04X) \r\n", c8->emu_V[0], c8->instr.inst_nnn);
       break;
     }
 
@@ -328,8 +433,10 @@ void emulate_instructions(chip8_t* c8, user_config_params_t* cfg)
         // Decrement first since it is currently pointing to the "next" stack location where a PC will be stored
         c8->emu_subrStack_ptr--;
         c8->emu_pc = *(c8->emu_subrStack_ptr);
-
-
+      }
+      else
+      {
+        // Invalid opcode ... maybe 0xNNN
 
       }
       break;
@@ -353,6 +460,33 @@ void emulate_instructions(chip8_t* c8, user_config_params_t* cfg)
       break;
     }
 
+    case 0x03:      // 0x3XNN: If V[X] == NN, skip next instruction
+    {
+      if (c8->emu_V[c8->instr.inst_x] == c8->instr.inst_nn) 
+        c8->emu_pc += 2;
+
+      break;
+    }
+
+    case 0x04:      // 0x4XNN: If V[X] != NN, skip next instruction
+    {
+      if (c8->emu_V[c8->instr.inst_x] != c8->instr.inst_nn) 
+        c8->emu_pc += 2;
+      
+      break;
+    }
+
+    case 0x05:      // 0x4XNN: If V[X] == V[Y], skip next instruction
+    {
+      if (c8->instr.inst_n != 0)      // Wrong opcode
+        break;
+
+      if (c8->emu_V[c8->instr.inst_x] == c8->emu_V[c8->instr.inst_y]) 
+        c8->emu_pc += 2;
+
+      break;
+    }
+
     case 0x06:      // 6XNN: Set Data Register VX to NN
     {
       c8->emu_V[c8->instr.inst_x] = c8->instr.inst_nn;
@@ -364,10 +498,83 @@ void emulate_instructions(chip8_t* c8, user_config_params_t* cfg)
       c8->emu_V[c8->instr.inst_x] += c8->instr.inst_nn;
       break;
     }
+    
+    case 0x08:
+    {
+      if (c8->instr.inst_n == 0x00)
+        c8->emu_V[c8->instr.inst_x] = c8->emu_V[c8->instr.inst_y];       // 0x8XY0: Set VX equal to VY
+
+      else if (c8->instr.inst_n == 0x01)
+        c8->emu_V[c8->instr.inst_x] |= c8->emu_V[c8->instr.inst_y];      // 0x8XY1: Set VX equal to VX OR VY
+
+      else if (c8->instr.inst_n == 0x02)
+        c8->emu_V[c8->instr.inst_x] &= c8->emu_V[c8->instr.inst_y];      // 0x8XY2: Set VX equal to VX AND VY
+
+      else if (c8->instr.inst_n == 0x03)
+        c8->emu_V[c8->instr.inst_x] ^= c8->emu_V[c8->instr.inst_y];      // 0x8XY3: Set VX equal to VX XOR VY
+
+      else if (c8->instr.inst_n == 0x04)                                 // 0x8XY4: Set VX += VY and set VF to 1 if carry
+      {
+        if ((uint16_t)(c8->emu_V[c8->instr.inst_x] + c8->emu_V[c8->instr.inst_y]) > 255)
+          c8->emu_V[0x0F] = 1;
+          
+        c8->emu_V[c8->instr.inst_x] += c8->emu_V[c8->instr.inst_y];
+      }
+
+      else if (c8->instr.inst_n == 0x05)                                 // 0x8XY5: Set VX -= VY and set VF to 1 if no borrow
+      {
+        if (c8->emu_V[c8->instr.inst_x] >= c8->emu_V[c8->instr.inst_y]) 
+          c8->emu_V[0x0F] = 1;
+          
+        c8->emu_V[c8->instr.inst_x] -= c8->emu_V[c8->instr.inst_y];
+      }
+
+      else if (c8->instr.inst_n == 0x06)                                 // 0x8XY6: Store LSb of VX in VF amd shift VX right by 1
+      {
+        c8->emu_V[0x0F] = c8->emu_V[c8->instr.inst_x] & 0x01;
+        c8->emu_V[c8->instr.inst_x] >>= 1;
+      }
+
+      else if (c8->instr.inst_n == 0x07)                                 // 0x8XY7: Set VX = VY - vX and set VF to 1 if no borrow
+      {
+        if (c8->emu_V[c8->instr.inst_y] >= c8->emu_V[c8->instr.inst_x]) 
+          c8->emu_V[0x0F] = 1;
+          
+        c8->emu_V[c8->instr.inst_x] = c8->emu_V[c8->instr.inst_y] - c8->emu_V[c8->instr.inst_x];
+      }
+
+      else if (c8->instr.inst_n == 0x0E)                                 // 0x8XYE: Store MSb of VX in VF amd shift VX left by 1
+      {
+        c8->emu_V[0x0F] = (c8->emu_V[c8->instr.inst_x] & 0x80) >> 7;
+        c8->emu_V[c8->instr.inst_x] <<= 1;
+      }
+
+      else
+      {
+        // Wrong OPCODE
+      }
+
+      break;
+    }
+
+
+    case 0x09:      // 9XY0: Skip next instruction if VX != VY
+    {
+      if (c8->emu_V[c8->instr.inst_x] != c8->emu_V[c8->instr.inst_y]) 
+        c8->emu_pc += 2;
+
+      break;
+    }
 
     case 0x0A:       // ANNN: Set Memory Index Register I to NNN
     {
       c8->emu_I = c8->instr.inst_nnn;
+      break;
+    }
+
+    case 0x0B:       // BNNN: Jump to V0 + NNN
+    {
+      c8->emu_pc = c8->emu_V[0] + c8->instr.inst_nnn;
       break;
     }
 
