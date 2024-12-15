@@ -23,6 +23,7 @@ typedef struct
   uint32_t fg_color;
   uint32_t bg_color;
   bool pixel_outlines;
+  uint32_t instructions_per_second;
 
 } user_config_params_t;
 
