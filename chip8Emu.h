@@ -19,6 +19,8 @@ typedef struct
 {
   uint32_t window_width;
   uint32_t window_height;
+  uint32_t top_border;
+  uint32_t side_border;
   uint32_t scale_factor;
   uint32_t fg_color;
   uint32_t bg_color;
@@ -36,29 +38,14 @@ typedef enum
   PAUSE = 2
 } current_state_t;
 
-typedef struct
-{
-  uint16_t inst_opcode;   // Entire Main Instruction
-  
-  uint16_t inst_nnn;  // 12 Bit Address
-  uint8_t inst_nn;    // 8 Bit constant
-  uint8_t inst_n;     // 4 Bit constant
-  uint8_t inst_x;     // 4 Bit register identifier
-  uint8_t inst_y;     // 4 Bit register identifier
-  uint8_t inst_op;    // Identify type/category of instruction
-
-} instruction_t;
-
 
 // Could have multiple chip8_t instances for multiple windows simulatanoeusly 
 typedef struct
 {
   // Current state of the emulator
   // Name of the currently running rom
-  // Currently executing instruction 
   current_state_t emu_state;
   const char* emu_romName;
-  instruction_t instr;
 
   // Main System RAM
   uint8_t emu_ram[4096];
@@ -87,5 +74,49 @@ typedef struct
   bool emu_keypad[16];
  
 } chip8_t;
+
+
+
+/*
+ *
+ *
+ *    INITIALIZATION AND SETUP FUNCTIONS
+ *
+ * 
+ */
+
+// Initialize user configuration settings received from the CLI
+bool init_user_configuration(user_config_params_t* cfg_params, int num_args, char** args_array);
+
+// Run once to initialize the SDL parameters (return true if initialized)
+bool init_sdl(sdl_params_t* sdl_parameters, user_config_params_t config_parameters);
+
+// Initialize an instance of a chip8
+bool init_chip8(chip8_t* c8, const char rom_name[]);
+
+// Clear window to the background color
+void clear_window(sdl_params_t* sdl_parameters, user_config_params_t* cfg_params);
+
+
+
+/*
+ *
+ *
+ *    MAIN LOOP FUNCTIONS
+ *
+ * 
+ */
+
+// Get User Input
+void handle_user_input(chip8_t* c8);
+
+// Emulate Chip8 Instructions
+void emulate_instructions(chip8_t* c8, user_config_params_t* cfg);
+
+// Update the window
+void update_window(sdl_params_t* sdl_params, user_config_params_t* cfg, chip8_t* c8);
+
+// Update chip8 timers
+void update_timers(chip8_t* c8);
 
 #endif

@@ -1,6 +1,3 @@
-# The flags will give us all, extra error warnings
-# -I tells the compiler to look for header files in the include directory and -L tells it to look for linker files in the lib directory
-
 #MAC MAKEFILE BEGIN
 
 # CFLAGS=-std=c17 -Wall -Wextra
@@ -15,4 +12,4 @@
 CFLAGS=-std=c17 -Wall -Wextra
 
 all:
-	gcc chip8Emu.c -o build/chip8Emu $(CFLAGS) `sdl2-config --cflags --libs`
+	gcc chip8Emu_emulation.c chip8Emu_initialization.c chip8Emu.c -o build/chip8Emu $(CFLAGS) `sdl2-config --cflags --libs` -I/usr/include/SDL2 -lSDL2_ttf
