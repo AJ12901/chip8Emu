@@ -1,2 +1,1 @@
-For cloning repo: 
-    git clone git@github.com:AJ12901/chip8Emu.git
+Chip8 Emulator built in C using SDL2
